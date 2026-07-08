@@ -1,7 +1,7 @@
 # PineconeX Web API
 
 Documentation for the [PineconeX](https://pineconex.com) HTTP API. PineconeX backtests and
-live-trades Pine Script v6 strategies; this API lets you do everything the web app does —
+live-trades Pine Script® v6 strategies; this API lets you do everything the web app does —
 create and validate strategies, run backtests / parameter sweeps / walk-forward analysis, and
 launch and monitor live trading bots — from your own scripts or an AI agent.
 
