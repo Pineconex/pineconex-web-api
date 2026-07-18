@@ -49,6 +49,10 @@ Request: `{ "code": "<pine v6 source>" }` (required).
 Response `201`: `StrategyResponse` (below). `name`/`description` are parsed from the source;
 `status` starts `"unvalidated"`.
 
+### POST /api/v1/strategies/from-github — import from your connected GitHub repo
+Request: `{ "stem": "<file stem>" }`. Imports the tracked Pine file of that stem from your
+connected GitHub repo as a strategy. Response `201`: `StrategyResponse`.
+
 ### GET /api/v1/strategies — list
 Response: array of `StrategyResponse`.
 
@@ -83,6 +87,10 @@ overrides. Each has `kind` plus `var_name`, `title`, `defval`, `swept`, and kind
 ### PUT /api/v1/strategies/{id}/params — body `{ "params_json5": "<json5>" }` → `204`
 
 ### POST /api/v1/strategies/{id}/share — set visibility (`{ "visibility": "private"|"shared_open"|"shared_protected" }`)
+
+### POST /api/v1/strategies/{id}/grant — share directly with another user
+Request: `{ "email": "<user email>" }`. Grants that user read access to this strategy (they see it
+in their shared list). Owner only.
 
 ---
 
@@ -393,6 +401,12 @@ accepted as a `?token=` query parameter (that path is reserved for the web UI's 
 token, since browser `EventSource` can't set headers).
 ### DELETE /api/v1/jobs/{id} — stop/cancel (live: soft-cancel kept in history; batch: hard delete)
 ### POST /api/v1/jobs/{id}/analyse — AI (descriptive) analysis of results
+### POST /api/v1/jobs/compare/analyse — AI (descriptive) analysis comparing several jobs
+Request: `{ "ids": [uuid, …], "provider": string|null }` (optional `provider` picks the AI backend).
+### POST /api/v1/jobs/patch-preview — preview a strategy's inputs after overrides, without running
+Request: `{ "strategy_id": uuid, "params_override": {…}|null }`. Returns the effective input specs
+with the overrides applied — the cheap way to check a `params_override` resolves before launching a
+job with it.
 
 ---
 
@@ -436,6 +450,10 @@ id, symbol_id, tv_symbol, display_name, index_name,
 source, timeframe, from_date, to_date, row_count, updated_at, expires_at|null
 ```
 
+### GET /api/v1/data/saxo-catalog → array of cached Saxo datasets
+The Saxo-sourced subset of the catalog, for the connected Saxo account. Same entry shape as
+`/data/catalog`. Empty if no Saxo account is connected.
+
 ### POST /api/v1/data/fetch — download/cache OHLCV
 ```
 symbol_id  uuid    required
@@ -445,6 +463,10 @@ to_date    date    required
 source     string  optional  (default "yahoo")
 ```
 Response: the resulting catalog entry.
+
+### GET /api/v1/data/massive-status → `{ "configured": bool }`
+Whether the Massive data source is configured on the server (i.e. whether `source: "massive"`
+fetches will work). No account of your own is required.
 
 ---
 
@@ -487,6 +509,39 @@ Opt your account in or out of the product-updates newsletter (keyed by your acco
 ### POST /api/v1/auth/keys — mint a key. **Session-JWT only** (an API key cannot mint keys → 403).
 Request `{ "name": string }`. Response `{ id, name, key_prefix, key }` — `key` shown once.
 ### DELETE /api/v1/auth/keys/{id} — revoke → `204`
+
+---
+
+## Dedicated VPS & SSO
+
+The **Dedicated VPS** tier gives a customer a single-tenant, isolated PineconeX instance at
+`<subdomain>.pineconex.com` (their own API + runner + database). The endpoints below run that
+tier. They are **outside** the `/api/v1` API-key surface — they use browser **session** auth or
+**admin** auth, so an API key (`pcx_live_…`) cannot call them. Documented for completeness.
+
+### GET /api/dedicated/sso — mint an SSO handoff link (session auth)
+Called on `pineconex.com` by a signed-in user who owns an **active** Dedicated instance. Returns a
+short-lived login link to their box:
+`{ "url": "https://<subdomain>.pineconex.com/api/auth/sso?token=<jwt>" }`.
+The token is HS256, signed with that instance's per-instance secret, **60-second TTL**, bound to
+the subdomain. `400` if the account has no active Dedicated VPS. (This is what the "Go to my VPS"
+button calls.)
+
+### GET /api/auth/sso?token=<jwt> — Dedicated-instance login (no auth header)
+The **only login path on a Dedicated instance** (`INSTANCE_MODE=dedicated`) — there is no OAuth
+and no login page. Verifies the handoff token against the instance's `SSO_SECRET`, checks the
+email against the instance allowlist, admits it as a **box admin**, sets the refresh cookie, and
+`302`s into `/app/strategies`. `401` on a bad/expired token, a non-allowlisted email, or a
+non-dedicated instance. Security rests on the per-instance HMAC secret + TTL, not on the URL.
+
+### Admin — Dedicated instance management (admin auth only)
+Operator endpoints on the shared platform; `require_admin` (an API key is rejected → `403`).
+- `GET /api/admin/vps` — list all Dedicated instances.
+- `POST /api/admin/vps` — `{ user_id, subdomain, region: "eu"|"us", stripe_subscription_id? }` → `{ id }`.
+- `PATCH /api/admin/vps/{id}` — optional `{ subdomain, region, status, vps_ip, hetzner_server_id, dns_record_created, stripe_subscription_id }` → `204`. Setting `status` to `deprovisioned` **deletes the Hetzner box**.
+- `DELETE /api/admin/vps/{id}` — remove the row → `204`.
+
+`status` ∈ `pending` · `provisioning` · `active` · `suspended` · `deprovisioned`.
 
 ---
 
